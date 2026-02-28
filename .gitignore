@@ -138,3 +138,10 @@ test.js
 __pycache__
 config.yaml
 banner.jpeg
+
+# Bot Data
+captchas/
+slices/
+templates/
+playwright_data/
+extracted_letters/

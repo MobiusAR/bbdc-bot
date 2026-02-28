@@ -1,54 +1,97 @@
-# BBDC-Booking-Bot
-Program help to check and book the available slots in BBDC (Bukit Batok Driving Centre), and send notification to your phone via Telegram/Discord.
+# BBDC Auto-Booking Bot 🚗
+A high-performance, fully automated Python bot designed to monitor and instantly secure driving practical slots at the Bukit Batok Driving Centre (BBDC) in Singapore. 
 
-<img src="banner.png" width=800 height=278/>
+This repository is a heavily modernized enhancement of the original BBDC checkers, featuring a custom Playwright network stack, intelligent Captcha bypassing, and 24/7 cloud deployment support.
 
-# Update
-* **2023 June**: Works with the [new BBDC page](https://booking.bbdc.sg/) that requires captcha.
+## 🚀 Key Features
+* **Smart Captcha Solver:** Automatically bypasses BOTH the Login and Booking captchas using the `OCR.space` API, completely eliminating the need for user intervention.
+* **Server-Lag Resilient:** BBDC's servers are notorious for lagging and timing out during slot confirmation. This bot utilizes custom API payload timeouts and a 15-tier retry system to guarantee the slot is locked in.
+* **Instant Notifications:** Get pinged instantly on Telegram or Discord the millisecond a slot is successfully booked.
+* **Smart Routing:** Seamlessly maps through empty months, cleanly skips un-preferred weekend/weekday sessions, and correctly drops erroneous Captcha reads to prevent account lockouts.
 
-# Prerequisites
-* Python3
-* [Tesseract](https://tesseract-ocr.github.io/tessdoc/Installation.html)
-* [Telegram Bot](https://t.me/botfather)
+---
 
-# Setup
+## 🛠️ Requirements
+* Python 3.9+
+* Playwright
 
-## Clone the repo
+---
+
+## 💻 Local Setup (Mac / Windows)
+
+### 1. Clone the repo
 ```sh
-$ git clone https://github.com/lolkabash/bbdc-booking-bot.git
-$ cd bbdc-booking-bot
-```
-## Create virtual environment and source the environment
-```sh
-# create virtual environment
-$ python3 -m venv env
-# activate the environment
-$ source env/bin/activate
-```
-
-## Install dependencies
-```sh
-$ pip install -r requirement.txt
+git clone https://github.com/MobiusAR/bbdc-bot.git
+cd bbdc-bot
 ```
 
-## Create your telegram bot
-Follow this [post](https://dev.to/rizkyrajitha/get-notifications-with-telegram-bot-537l) to create your telegram bot
-
-## Fill in your information
-Please fill in the following in `new_config.yaml` and rename it to `config.yaml` when done:
-* `Interval` for checking the slots (example: every 1 min)
-* BBDC `username` and `password`
-* Wanted `month` (example: `202306` for June 2023)
-* Wanted `sessions` in list form (example: `[3, 4, 5, 6]` for Sessions 3, 4, 5, 6)
-* Enable auto-solving `login` and `booking` captchas with Tesseract OCR
-* `Enable_booking` or notifications only
-* Telegram Bot `token` and `chat_id` (optional if `enabled`)
-* Discord `webhook` url (optional if `enabled`)
-
-# Run the program
+### 2. Create the Virtual Environment
 ```sh
-$ python3 main.py
+# Create virtual environment
+python3 -m venv env
+
+# Activate the environment (Mac/Linux)
+source env/bin/activate
+
+# Windows equivalent:
+# env\Scripts\activate
 ```
 
-# Reference
-* https://github.com/lizzzcai/bbdc-booking-bot
+### 3. Install Dependencies
+```sh
+pip install -r requirements.txt
+playwright install
+playwright install-deps
+```
+
+### 4. Configuration
+Rename `new_config.yaml` to `config.yaml` and fill in your details:
+* `username` / `password`: Your BBDC login credentials.
+* `months`: A list of the specific months you want to scan for (e.g., `["202604", "202605"]`).
+* `sessions`: A dictionary allowing you to designate different target sessions for weekdays vs weekends.
+* Make sure `save_captchas` is `True` if you wish to help build a local OCR dictionary.
+
+### 5. Run the Bot
+```sh
+python main.py
+```
+
+---
+
+## ☁️ 24/7 Cloud Deployment (DigitalOcean)
+
+If you want the bot to run continuously while you sleep, setting it up on a $6/mo DigitalOcean Droplet is the best approach.
+
+1. **Create an Ubuntu Droplet:** Choose the Singapore SG region for the lowest latency to BBDC servers.
+2. **Connect via SSH:** `ssh root@<YOUR_DROPLET_IP>`
+3. **Install Python & Git:**
+    ```bash
+    sudo apt update && sudo apt upgrade -y
+    sudo apt install python3 python3-venv python3-pip git -y
+    ```
+4. **Clone your code and setup:**
+    ```bash
+    git clone https://github.com/MobiusAR/bbdc-bot.git
+    cd bbdc-bot
+    python3 -m venv env
+    source env/bin/activate
+    pip install -r requirements.txt
+    playwright install
+    playwright install-deps
+    ```
+5. **Run in the Background:**
+    Use `nohup` so the bot continues running even after you close your terminal connection:
+    ```bash
+    nohup ./env/bin/python main.py > bot.log 2>&1 &
+    ```
+    *(You can view live updates anytime by running `tail -f bot.log`)*
+
+---
+
+## ⚠️ Anti-Suspension Protections
+BBDC automatically suspends accounts for 48 hours if too many invalid captchas are submitted. To prevent this, the bot has built-in safety nets:
+1. It validates the length of the OCR string before blindly submitting it.
+2. It tracks consecutive login failures. If the API fails 3 times in a row, the bot will gracefully shut itself down and send a Critical Alert to your Telegram/Discord to prevent the system from banning your account.
+
+---
+*Disclaimer: Use at your own risk. This project is not affiliated with Bukit Batok Driving Centre.*

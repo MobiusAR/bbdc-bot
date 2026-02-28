@@ -1,87 +1,99 @@
 #!/usr/bin/python3
 # coding: utf-8
 
-import pytesseract
+import requests
+import time
 import argparse
 import logging
-from collections import Counter
-
-try:
-    import Image, ImageOps, ImageFilter, imread
-except ImportError:
-    from PIL import Image, ImageOps, ImageFilter
-
+import io
+import base64
+import re
+from PIL import Image, ImageOps
 
 # setup logging
 logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 
-
-def solve_captcha(path):
+def solve_captcha(base64_string, api_key="K82590680388957"):
     """
-    Convert a captcha image into a text,
-    using PyTesseract Python-wrapper for Tesseract
+    Sends the captcha image to OCR.space API for highly accurate 
+    Alphanumeric character decoding, with pre-processing for better results.
     Arguments:
-        path (str):
-            path to the image to be processed
+        base64_string (str): The base64 encoded string from BBDC
+        api_key (str): Free tier API key from ocr.space
+            
     Return:
-        'textualized' image
-
-    General Idea:
-    1. Get list of all colors in the image
-    2. Top 5 common colours consists of letters + background (Most common colour is the background)
-    3. Convert all colours that aren't in the top 5 including background to white
-    4. Apply Box Blur to fill in gaps and process into B/W image for OCR
-    5. Use Tesseract
+        Tuple[str, int]: 'textualized' OCR string and confidence level
     """
-    image = Image.open(path).convert("RGB")
-    # image.convert("RGB")
-    image = ImageOps.autocontrast(image)
-    # image.show()
+    try:
+        # PRE-PROCESSING
+        # Decode base64 to image
+        img_data = base64.b64decode(base64_string)
+        img = Image.open(io.BytesIO(img_data)).convert("RGB")
+        
+        # Upscale and add contrast since BBDC captchas are small and noisy
+        img = img.resize((img.width * 2, img.height * 2), Image.Resampling.LANCZOS)
+        img = ImageOps.autocontrast(img)
+        img = img.convert("L") # Grayscale
+        
+        # Save back to base64
+        buffered = io.BytesIO()
+        img.save(buffered, format="PNG")
+        processed_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
+        
+        # OCR.space API expects a payload
+        payload = {
+            'isOverlayRequired': False,
+            'apikey': api_key,
+            'language': 'eng',
+            'OCREngine': '2', # Engine 2 is best for standard alphanumeric
+            'scale': 'true',
+            'base64Image': f"data:image/png;base64,{processed_base64}"
+        }
+        
+        # Retry loop for OCR.space API calls
+        max_retries = 3
+        response = None
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    'https://api.ocr.space/parse/image',
+                    data=payload,
+                    timeout=30 # Increased timeout for free tier stability
+                )
+                response.raise_for_status()
+                break
+            except requests.exceptions.RequestException as e:
+                logging.warning(f"OCR.space API attempt {attempt + 1} failed: {e}")
+                if attempt == max_retries - 1:
+                    return ("", 0)
+                time.sleep(2 * (attempt + 1))
+        
+        if not response:
+            return ("", 0)
+            
+        result_json = response.json()
+        
+        if result_json.get('IsErroredOnProcessing'):
+            logging.error(f"OCR API Error: {result_json.get('ErrorMessage')}")
+            return ("", 0)
+            
+        parsed_results = result_json.get('ParsedResults')
+        if not parsed_results:
+            return ("", 0)
+            
+        text = parsed_results[0].get('ParsedText', '').strip()
+        
+        # Strip all whitespace and non-alphanumeric characters
+        cleaned_text = re.sub(r'[^a-zA-Z0-9]', '', text)
 
-    # Get List Of Main Colors
-    pixel_count = Counter(image.getdata())
-    main_colours = pixel_count.most_common(5)[1:]
-
-    # Filtering Colours
-    copy = image.copy()
-    pixels = copy.load()
-    main_colours_list = list(zip(*main_colours))[0]
-    for x in range(image.size[0]):  # For Every Pixel:
-        for y in range(image.size[1]):
-            if (
-                pixels[x, y] not in main_colours_list
-            ):  # Change All Non-Main Colour to White
-                pixels[x, y] = (255, 255, 255)
-    # copy.show()
-
-    # Fill holes using box blur then flatten into B/W image
-    def fillHoles(text, thresh):
-        text = text.filter(ImageFilter.BoxBlur(1))
-        fn = lambda x: 255 if x > thresh else 0
-        text = text.convert("L").point(fn, mode="1")
-        # text.show()
-        return text
-
-    # OCR Part
-    def OCR(image):
-        data = pytesseract.image_to_data(
-            image,
-            output_type="data.frame",
-            config=(
-                "-c tessedit"
-                "_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-                "_char_blacklist=!?"
-                " --psm 10"
-                " --oem 3"
-            ),
-        )
-        logging.info(
-            "Text: {} | Confidence: {}%".format(data.text[4], int(data.conf[4]))
-        )
-        return (str(data.text[4]), int(data.conf[4]))
-
-    return OCR(fillHoles(copy, 225))
-
+        # STRICT VALIDATION: BBDC Captchas are always 5-6 characters.
+        conf = 99 if 5 <= len(cleaned_text) <= 6 else 0
+        logging.info(f"External OCR result: '{cleaned_text}' | Confidence (implied): {conf}%")
+        return (cleaned_text, conf)
+        
+    except Exception as e:
+        logging.error(f"Failed to submit captcha to OCR.space: {e}")
+        return ("", 0)
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser()
@@ -90,6 +102,8 @@ if __name__ == "__main__":
     )
     args = vars(argparser.parse_args())
     path = args["image"]
+    with open(path, "rb") as image_file:
+        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
     print("-- Resolving")
-    captcha_text = solve_captcha(path)[0]
+    captcha_text = solve_captcha(encoded_string)[0]
     print("-- Result: {}".format(captcha_text))

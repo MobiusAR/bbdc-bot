@@ -1,30 +1,39 @@
 # config
 
-# interval in minutes
-interval: 1
+# interval in seconds
+interval: 60
 
 # BBDC Login
 login:
-  username: ""
-  password: ""
+  username: "YOUR_BBDC_ID"
+  password: "YOUR_BBDC_PASSWORD"
 
-# preferred month and session E.g. 202306 [3, 4, 5, 6, 7]
+# preferred months and session E.g. [] or ["202306", "202307"] -> sessions: [3, 4, 5, 6, 7]
+# You can also use a dictionary to specify different sessions for weekdays and weekends:
+# sessions:
+#   weekday: [7]
+#   weekend: [3, 4]
 pref: 
-  month: ""
-  sessions: []
+  months: ["202604", "202605"]
+  sessions: [3, 4, 5, 6, 7]
 
 # manually solve captchas?
 captcha:
-  login: True
-  booking: True
+  login: False
+  booking: False
+
+# OCR space API (for automatically solving captchas accurately)
+ocr:
+  api_key: "K82590680388957" # Free default test key from OCR.space
+
 
 enable_booking: True
 
 telegram:
-  enabled: True
-  token: ""
-  chat_id: ""
+  enabled: False
+  token: "YOUR_TELEGRAM_BOT_TOKEN"
+  chat_id: "YOUR_TELEGRAM_CHAT_ID"
 
 discord:
-  enabled: True
-  webhook:  ""
+  enabled: False
+  webhook:  "YOUR_DISCORD_WEBHOOK_URL"

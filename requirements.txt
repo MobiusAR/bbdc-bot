@@ -6,3 +6,6 @@ PyYAML
 requests
 schedule
 Pillow
+playwright
+opencv-python
+scipy

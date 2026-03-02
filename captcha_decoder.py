@@ -1,98 +1,80 @@
 #!/usr/bin/python3
 # coding: utf-8
 
-import requests
+import re
 import time
 import argparse
 import logging
 import io
 import base64
-import re
+import cv2
+import numpy as np
+import easyocr
 from PIL import Image, ImageOps
 
 # setup logging
 logging.basicConfig(format="%(asctime)s %(message)s", level=logging.INFO)
 
-def solve_captcha(base64_string, api_key="K82590680388957"):
+# Initialize EasyOCR reader once (model loads on first call)
+_reader = None
+
+def _get_reader():
+    global _reader
+    if _reader is None:
+        logging.info("Loading EasyOCR model (first run downloads ~100MB model)...")
+        _reader = easyocr.Reader(['en'], gpu=False, verbose=False)
+        logging.info("EasyOCR model loaded successfully.")
+    return _reader
+
+def solve_captcha(base64_string, api_key=None):
     """
-    Sends the captcha image to OCR.space API for highly accurate 
-    Alphanumeric character decoding, with pre-processing for better results.
+    Solves the captcha image using EasyOCR (runs locally, no API calls).
     Arguments:
         base64_string (str): The base64 encoded string from BBDC
-        api_key (str): Free tier API key from ocr.space
+        api_key (str): Unused, kept for backward compatibility
             
     Return:
         Tuple[str, int]: 'textualized' OCR string and confidence level
     """
     try:
-        # PRE-PROCESSING
-        # Decode base64 to image
+        reader = _get_reader()
+        
+        # Decode base64 to numpy array for OpenCV
         img_data = base64.b64decode(base64_string)
-        img = Image.open(io.BytesIO(img_data)).convert("RGB")
+        nparr = np.frombuffer(img_data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
-        # Upscale and add contrast since BBDC captchas are small and noisy
-        img = img.resize((img.width * 2, img.height * 2), Image.Resampling.LANCZOS)
-        img = ImageOps.autocontrast(img)
-        img = img.convert("L") # Grayscale
-        
-        # Save back to base64
-        buffered = io.BytesIO()
-        img.save(buffered, format="PNG")
-        processed_base64 = base64.b64encode(buffered.getvalue()).decode('utf-8')
-        
-        # OCR.space API expects a payload
-        payload = {
-            'isOverlayRequired': False,
-            'apikey': api_key,
-            'language': 'eng',
-            'OCREngine': '2', # Engine 2 is best for standard alphanumeric
-            'scale': 'true',
-            'base64Image': f"data:image/png;base64,{processed_base64}"
-        }
-        
-        # Retry loop for OCR.space API calls
-        max_retries = 3
-        response = None
-        for attempt in range(max_retries):
-            try:
-                response = requests.post(
-                    'https://api.ocr.space/parse/image',
-                    data=payload,
-                    timeout=30 # Increased timeout for free tier stability
-                )
-                response.raise_for_status()
-                break
-            except requests.exceptions.RequestException as e:
-                logging.warning(f"OCR.space API attempt {attempt + 1} failed: {e}")
-                if attempt == max_retries - 1:
-                    return ("", 0)
-                time.sleep(2 * (attempt + 1))
-        
-        if not response:
+        if img is None:
             return ("", 0)
-            
-        result_json = response.json()
         
-        if result_json.get('IsErroredOnProcessing'):
-            logging.error(f"OCR API Error: {result_json.get('ErrorMessage')}")
-            return ("", 0)
-            
-        parsed_results = result_json.get('ParsedResults')
-        if not parsed_results:
-            return ("", 0)
-            
-        text = parsed_results[0].get('ParsedText', '').strip()
+        # Light preprocessing: upscale + contrast enhancement
+        img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        enhanced = clahe.apply(gray)
         
-        # Strip all whitespace and non-alphanumeric characters
-        cleaned_text = re.sub(r'[^a-zA-Z0-9]', '', text)
-
+        # Run EasyOCR with alphanumeric whitelist
+        raw_results = reader.readtext(
+            enhanced,
+            detail=1,
+            allowlist='0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ',
+            paragraph=False
+        )
+        
+        # Combine all detected text fragments
+        full_text = ''.join([r[1] for r in raw_results])
+        cleaned_text = re.sub(r'[^a-zA-Z0-9]', '', full_text)
+        
+        # Average confidence across all detected regions
+        avg_conf = sum(r[2] for r in raw_results) / len(raw_results) if raw_results else 0
+        
         # STRICT VALIDATION: BBDC Captchas are always 5-6 characters.
         conf = 99 if 5 <= len(cleaned_text) <= 6 else 0
-        logging.info(f"External OCR result: '{cleaned_text}' | Confidence (implied): {conf}%")
+        logging.info(f"EasyOCR result: '{cleaned_text}' | Length: {len(cleaned_text)} | Model conf: {avg_conf:.1%} | Valid: {conf}%")
         return (cleaned_text, conf)
         
     except Exception as e:
-        logging.error(f"Failed to submit captcha to OCR.space: {e}")
+        logging.error(f"EasyOCR failed: {e}")
         return ("", 0)
 
 if __name__ == "__main__":

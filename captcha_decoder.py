@@ -130,7 +130,13 @@ class LocalCaptchaMatcher:
             if conf < 0.65:
                 continue
                 
-            result += char
+            case_map = {
+                'A': 'A', 'B': 'b', 'D': 'D', 'E': 'E', 'F': 'f', 
+                'G': 'g', 'H': 'h', 'J': 'j', 'N': 'n', 'Q': 'Q', 
+                'R': 'r', 'T': 't'
+            }
+                
+            result += case_map.get(char, char)
             total_conf += conf
             
         avg_conf = total_conf / len(slices) if slices else 0

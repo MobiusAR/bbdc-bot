@@ -124,6 +124,12 @@ class LocalCaptchaMatcher:
         
         for s in slices:
             char, conf = self.match_slice(s)
+            
+            # If the best match has a confidence below 65%, it is either a tiny dot 
+            # of noise or an unknown, garbled font variation. We discard the slice safely.
+            if conf < 0.65:
+                continue
+                
             result += char.upper() # BBDC handles captchas entirely case insensitively
             total_conf += conf
             

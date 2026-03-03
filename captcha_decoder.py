@@ -130,13 +130,17 @@ class LocalCaptchaMatcher:
             if conf < 0.65:
                 continue
                 
-            case_map = {
-                'A': 'A', 'B': 'b', 'D': 'D', 'E': 'E', 'F': 'f', 
-                'G': 'g', 'H': 'h', 'J': 'j', 'N': 'n', 'Q': 'Q', 
-                'R': 'r', 'T': 't'
-            }
+            if char.endswith('_LOWER'):
+                final_char = char[0].lower()
+            elif char.endswith('_UPPER'):
+                final_char = char[0].upper()
+            else:
+                case_map = {
+                    'B': 'b', 'G': 'g', 'H': 'h', 'J': 'j', 'Q': 'Q', 'R': 'r'
+                }
+                final_char = case_map.get(char, char)
                 
-            result += case_map.get(char, char)
+            result += final_char
             total_conf += conf
             
         avg_conf = total_conf / len(slices) if slices else 0

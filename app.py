@@ -335,10 +335,22 @@ class Session:
                     )
                 bookingData = Api.book(context, headers, captcha, captchaResponse, slotPayload)
                 if bookingData and bookingData.get("success"):
-                    bookedSlot = bookingData["data"]["bookedPracticalSlotList"][0]
+                    # BBDC may return success:True but the slot list is empty or fails
+                    slot_list = bookingData.get("data", {}).get("bookedPracticalSlotList", [])
+                    if not slot_list:
+                        logging.warning("Booking failed: Slot scooped by someone else (empty list). Aborting.")
+                        break
+                        
+                    bookedSlot = slot_list[0]
+                    msg = bookedSlot.get('message', '').lower()
+                    
+                    if 'already' in msg or 'sorry' in msg or 'taken' in msg or 'fail' in msg or 'exceeded' in msg:
+                        logging.warning(f"Booking failed: Slot scooped by another user. API Msg: {msg}")
+                        break # Slot is gone, abort retry loop
+                        
                     logging.info("Booking Confirmed !")
                     
-                    success_msg = f"✅ BBDC Booking Confirmed!\n\n{bookedSlot['message']}"
+                    success_msg = f"✅ BBDC Booking Confirmed!\n\n{bookedSlot.get('message')}"
                     if enable_tele:
                         send_message_tele(success_msg, bot_token, chat_id)
                     if enable_disc:
@@ -346,7 +358,13 @@ class Session:
                     break
                 else:
                     delay = 5
-                    logging.warning(f"Booking failed (captcha might be wrong). Attempt {attempt + 1}/{max_retries}. Waiting {delay}s...")
+                    err_msg = bookingData.get("msg", "") if bookingData else ""
+                    logging.warning(f"Booking failed (captcha might be wrong). Attempt {attempt + 1}/{max_retries}. Waiting {delay}s. Msg: {err_msg}")
+                    
+                    if "already" in err_msg.lower() or "taken" in err_msg.lower() or "sorry" in err_msg.lower():
+                         logging.warning(f"Slot scooped! Aborting early: {err_msg}")
+                         break
+                         
                     if attempt == max_retries - 1:
                         logging.error(f"Max booking retries ({max_retries}) reached. Aborting booking for this slot.")
                         break

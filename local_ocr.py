@@ -30,7 +30,11 @@ class LocalCaptchaMatcher:
 
     def slice_captcha(self, img):
         """Slice the captcha using the exact same logic used for training data."""
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        if len(img.shape) == 3:
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = img
+            
         _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
         thresh = cv2.medianBlur(thresh, 3)
         
@@ -95,8 +99,12 @@ class LocalCaptchaMatcher:
                     
         return best_match_char, best_match_score
 
-    def solve(self, image_path):
-        img = cv2.imread(image_path)
+    def solve(self, image_input):
+        if isinstance(image_input, str):
+            img = cv2.imread(image_input)
+        else:
+            img = image_input # It's already a decoded OpenCV numpy array
+            
         if img is None:
             return "", 0.0
             
@@ -109,7 +117,11 @@ class LocalCaptchaMatcher:
         
         for s in slices:
             char, conf = self.match_slice(s)
-            result += char
+            
+            if conf < 0.65:
+                continue
+                
+            result += char.upper()
             total_conf += conf
             
         avg_conf = total_conf / len(slices) if slices else 0

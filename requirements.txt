@@ -9,4 +9,3 @@ Pillow
 playwright
 opencv-python-headless
 scipy
-easyocr

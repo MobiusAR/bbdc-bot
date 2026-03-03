@@ -130,7 +130,7 @@ class LocalCaptchaMatcher:
             if conf < 0.65:
                 continue
                 
-            result += char.upper() # BBDC handles captchas entirely case insensitively
+            result += char
             total_conf += conf
             
         avg_conf = total_conf / len(slices) if slices else 0

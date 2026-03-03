@@ -106,18 +106,45 @@ class LocalCaptchaMatcher:
             img = image_input # It's already a decoded OpenCV numpy array
             
         if img is None:
-            return "", 0.0
+            return "", 0
             
         slices = self.slice_captcha(img)
+        
+        # BBDC captchas are always 5-6 valid readable characters. 
+        # If it's too overlapping to slice cleanly, ABORT instantly.
         if not (5 <= len(slices) <= 6):
-            return "", 0.0 # BBDC captchas are always 5-6 valid readable characters
+            return "", 0 
+            
+        # Re-run connected components to find tiny dots for J/j detection
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        thresh = cv2.medianBlur(thresh, 3)
+        num_labels, _, stats, _ = cv2.connectedComponentsWithStats(thresh, connectivity=8)
+        
+        char_boxes = []
+        all_components = []
+        for i in range(1, num_labels):
+            x = stats[i, cv2.CC_STAT_LEFT]
+            y = stats[i, cv2.CC_STAT_TOP]
+            w = stats[i, cv2.CC_STAT_WIDTH]
+            h = stats[i, cv2.CC_STAT_HEIGHT]
+            area = stats[i, cv2.CC_STAT_AREA]
+            
+            if area > 15:
+                all_components.append((x, y, w, h, area))
+                
+            if area > 40 and w > 5 and h > 10:
+                char_boxes.append((x, y, w, h))
+        char_boxes = sorted(char_boxes, key=lambda b: b[0])
             
         result = ""
         total_conf = 0.0
         
-        for s in slices:
+        for i, s in enumerate(slices):
             char, conf = self.match_slice(s)
             
+            # If the best match has a confidence below 65%, it is either a tiny dot 
+            # of noise or an unknown, garbled font variation. We discard the slice safely.
             if conf < 0.65:
                 continue
                 
@@ -126,16 +153,27 @@ class LocalCaptchaMatcher:
             elif char.endswith('_UPPER'):
                 final_char = char[0].upper()
             else:
-                case_map = {
-                    'B': 'b', 'G': 'g', 'H': 'h', 'J': 'j', 'Q': 'Q', 'R': 'r'
-                }
-                final_char = case_map.get(char, char)
+                final_char = char
+                
+            # Dynamic dot detection for J
+            if final_char.upper() == 'J':
+                has_dot = False
+                if i < len(char_boxes):
+                    cx, cy, cw, ch = char_boxes[i]
+                    pad = 3
+                    for dx, dy, dw, dh, darea in all_components:
+                        # check if dot is above the hook, horizontally within bounds, and h < 25
+                        if dh < 25 and dy + dh < cy and dx + dw > cx - pad and dx < cx + cw + pad:
+                            if cy - (dy + dh) < 25: 
+                                has_dot = True
+                                break
+                final_char = 'j' if has_dot else 'J'
                 
             result += final_char
             total_conf += conf
             
         avg_conf = total_conf / len(slices) if slices else 0
-        return result, avg_conf
+        return result, int(avg_conf * 100)
 
 if __name__ == "__main__":
     print("Testing Local Matcher against farmed captchas...")

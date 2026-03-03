@@ -160,7 +160,7 @@ class LocalCaptchaMatcher:
                     cx, cy, cw, ch = char_boxes[i]
                     pad = 3
                     for dx, dy, dw, dh, darea in all_components:
-                        if dh < 25 and dy + dh < cy and dx + dw > cx - pad and dx < cx + cw + pad:
+                        if dh < 25 and dy + dh < cy + 5 and dx + dw > cx - pad and dx < cx + cw + pad:
                             if cy - (dy + dh) < 25: 
                                 has_dot = True
                                 break

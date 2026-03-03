@@ -162,8 +162,8 @@ class LocalCaptchaMatcher:
                     cx, cy, cw, ch = char_boxes[i]
                     pad = 3
                     for dx, dy, dw, dh, darea in all_components:
-                        # check if dot is above the hook, horizontally within bounds, and h < 25
-                        if dh < 25 and dy + dh < cy and dx + dw > cx - pad and dx < cx + cw + pad:
+                        # Allow dot to overlap top of hook by up to 5 pixels (cy + 5)
+                        if dh < 25 and dy + dh < cy + 5 and dx + dw > cx - pad and dx < cx + cw + pad:
                             if cy - (dy + dh) < 25: 
                                 has_dot = True
                                 break

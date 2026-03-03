@@ -124,7 +124,7 @@ class LocalCaptchaMatcher:
         
         for s in slices:
             char, conf = self.match_slice(s)
-            result += char
+            result += char.upper() # BBDC handles captchas entirely case insensitively
             total_conf += conf
             
         avg_conf = total_conf / len(slices) if slices else 0
